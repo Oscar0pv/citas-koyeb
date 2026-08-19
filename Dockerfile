@@ -1,10 +1,11 @@
-FROM python:3.10-slim-bullseye
+FROM python:3.10-slim-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# Instalar Chromium y ChromeDriver directamente desde Debian (sin errores de llaves ni URLs descontinuadas)
+# Actualizar certificados e instalar Chromium + ChromeDriver
 RUN apt-get update && apt-get install -y \
+    ca-certificates \
     chromium \
     chromium-driver \
     curl \
