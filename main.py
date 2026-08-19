@@ -21,7 +21,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8400265046:AAHA_qjtya3Gf2kqB-
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "-1003744855469") 
 URL = "https://outlook.office365.com/book/Atencinalpblico@cancilleria.gov.co/?ismsaljsauthenabled=true"
 NOMBRE_SERVICIO = os.environ.get("SERVICIO", "Cédula Primera vez")
-REVISAR_CADA = int(os.environ.get("INTERVALO", 300))
+REVISAR_CADA = int(os.environ.get("INTERVALO", 290))
 PUERTO = int(os.environ.get("PORT", 8080))
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
