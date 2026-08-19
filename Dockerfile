@@ -1,17 +1,14 @@
-FROM python:3.10-slim-bookworm
+FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
 
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Instalar dependencias de Python
+# Copiar e instalar dependencias de Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Instalar los navegadores aislados y dependencias necesarias con Playwright
-RUN playwright install chromium
-RUN playwright install-deps chromium
-
+# Copiar el resto del código
 COPY . .
 
 EXPOSE 8080
