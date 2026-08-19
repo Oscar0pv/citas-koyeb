@@ -47,27 +47,25 @@ def enviar_telegram(mensaje):
         logging.error(f"Error Telegram: {e}")
 
 # ===========================================
-# LÓGICA DE BÚSQUEDA CORREGIDA
+# LÓGICA DE BÚSQUEDA
 # ===========================================
 def buscar_citas():
     global ultima_verificacion, ultimo_estado, citas_encontradas_total
     ultima_verificacion = time.strftime('%Y-%m-%d %H:%M:%S')
     
     options = Options()
+    options.binary_location = "/usr/bin/chromium"
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
+    options.add_argument('--single-process')
     options.add_argument('--window-size=1920,1080')
-    options.binary_location = "/usr/bin/google-chrome"
-    
-    # Deshabilitar logs innecesarios de Chrome
     options.add_experimental_option("excludeSwitches", ["enable-logging"])
     
     driver = None
     try:
-        # Usar ChromeDriver instalado en el sistema
-        service = Service("/usr/local/bin/chromedriver")
+        service = Service("/usr/bin/chromedriver")
         driver = webdriver.Chrome(service=service, options=options)
         wait = WebDriverWait(driver, 20)
         
@@ -77,7 +75,6 @@ def buscar_citas():
         
         # ========== 1. SELECCIONAR SERVICIO CORRECTAMENTE ==========
         try:
-            # Primero, hacer click en "Mostrar más servicios" si existe
             try:
                 boton_mostrar = driver.find_element(By.XPATH, "//button[contains(text(), 'Mostrar más servicios')]")
                 driver.execute_script("arguments[0].click();", boton_mostrar)
@@ -86,7 +83,6 @@ def buscar_citas():
             except:
                 logging.info("No se encontró botón 'Mostrar más servicios'")
             
-            # Buscar el servicio por el texto EXACTO
             servicios = driver.find_elements(By.CSS_SELECTOR, "div.XNuah")
             servicio_encontrado = False
             
@@ -94,10 +90,8 @@ def buscar_citas():
                 texto_servicio = servicio.text.strip()
                 logging.info(f"Servicio encontrado: '{texto_servicio}'")
                 
-                # Comparación exacta
                 if texto_servicio == NOMBRE_SERVICIO:
                     logging.info(f"✅ Servicio exacto encontrado: '{texto_servicio}'")
-                    # Buscar el radio button asociado
                     radio = servicio.find_element(By.XPATH, "./ancestor::li//input[@type='radio']")
                     driver.execute_script("arguments[0].click();", radio)
                     servicio_encontrado = True
@@ -105,7 +99,6 @@ def buscar_citas():
                     break
             
             if not servicio_encontrado:
-                # Intentar con búsqueda parcial si no encuentra exacto
                 for servicio in servicios:
                     if NOMBRE_SERVICIO.lower() in servicio.text.lower():
                         logging.info(f"✅ Servicio parcial encontrado: '{servicio.text}'")
@@ -125,11 +118,9 @@ def buscar_citas():
             ultimo_estado = f"Error seleccionando servicio: {str(e)[:50]}"
             return
         
-        # Esperar que cargue el calendario
         time.sleep(5)
         
         # ========== 2. BUSCAR DÍAS DISPONIBLES ==========
-        # Buscar todos los botones de días
         dias = driver.find_elements(By.CSS_SELECTOR, "div.omApa[data-value]")
         logging.info(f"Total días encontrados en calendario: {len(dias)}")
         
@@ -138,9 +129,7 @@ def buscar_citas():
         for dia in dias:
             try:
                 numero = dia.text.strip()
-                # Verificar que sea un número (día del mes)
                 if numero and numero.isdigit():
-                    # Verificar si está habilitado (NO tiene aria-disabled="true")
                     aria_disabled = dia.get_attribute("aria-disabled")
                     if aria_disabled != "true":
                         dias_disponibles.append(numero)
@@ -148,7 +137,6 @@ def buscar_citas():
             except Exception as e:
                 continue
         
-        # Eliminar duplicados y ordenar
         if dias_disponibles:
             dias_ordenados = sorted(list(set(dias_disponibles)), key=int)
             citas_encontradas_total += 1
@@ -159,7 +147,7 @@ def buscar_citas():
             mensaje += f"<b>📅 Fecha:</b> {ultima_verificacion}\n"
             mensaje += f"<b>✅ Días con citas:</b> {len(dias_ordenados)}\n"
             for d in dias_ordenados:
-                mensaje += f"   📆 Día {d}\n"
+                mensaje += f"    📆 Día {d}\n"
             mensaje += f"\n🔗 <a href='{URL}'>Reservar ahora</a>"
             
             enviar_telegram(mensaje)
@@ -190,9 +178,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(status_msg, parse_mode="HTML")
 
 async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /check para buscar citas manualmente"""
     await update.message.reply_text("🔍 Buscando citas... por favor espera.")
-    # Ejecutar búsqueda en un hilo separado para no bloquear
     threading.Thread(target=buscar_citas, daemon=True).start()
 
 async def run_tg():
@@ -206,7 +192,7 @@ async def run_tg():
         await asyncio.sleep(3600)
 
 def loop_busqueda():
-    time.sleep(15)  # Esperar a que todo esté listo
+    time.sleep(15)
     enviar_telegram(f"🚀 Bot Iniciado\n📱 Servicio: {NOMBRE_SERVICIO}\n🔄 Intervalo: {REVISAR_CADA}s")
     while True:
         try:
@@ -225,11 +211,6 @@ if __name__ == "__main__":
     logging.info(f"🔄 Revisando cada {REVISAR_CADA} segundos")
     logging.info("="*50)
     
-    # Hilo para Flask
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=PUERTO, debug=False, use_reloader=False), daemon=True).start()
-    
-    # Hilo para Telegram
     threading.Thread(target=lambda: asyncio.run(run_tg()), daemon=True).start()
-    
-    # Loop principal
     loop_busqueda()
