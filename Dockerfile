@@ -3,7 +3,7 @@ FROM python:3.10-slim-bullseye
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# Instalar Chromium y Chromium-Driver directamente desde el repositorio de Debian
+# Instalar Chromium y ChromeDriver directamente desde Debian (sin errores de llaves ni URLs descontinuadas)
 RUN apt-get update && apt-get install -y \
     chromium \
     chromium-driver \
