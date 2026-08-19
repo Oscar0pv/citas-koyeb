@@ -8,6 +8,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Instalar el navegador específico que requiere la versión de la librería
+RUN python -m playwright install chromium
+
 # Copiar el resto del código
 COPY . .
 
