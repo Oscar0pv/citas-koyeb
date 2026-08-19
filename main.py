@@ -5,12 +5,7 @@ import os
 import logging
 import requests
 import asyncio
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from playwright.sync_api import sync_playwright
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -47,121 +42,112 @@ def enviar_telegram(mensaje):
         logging.error(f"Error Telegram: {e}")
 
 # ===========================================
-# LÓGICA DE BÚSQUEDA
+# LÓGICA DE BÚSQUEDA CON PLAYWRIGHT
 # ===========================================
 def buscar_citas():
     global ultima_verificacion, ultimo_estado, citas_encontradas_total
     ultima_verificacion = time.strftime('%Y-%m-%d %H:%M:%S')
     
-    options = Options()
-    options.binary_location = "/usr/bin/chromium"
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--single-process')
-    options.add_argument('--window-size=1920,1080')
-    options.add_experimental_option("excludeSwitches", ["enable-logging"])
-    
-    driver = None
     try:
-        service = Service("/usr/bin/chromedriver")
-        driver = webdriver.Chrome(service=service, options=options)
-        wait = WebDriverWait(driver, 20)
-        
-        logging.info(f"🔍 Iniciando búsqueda para: {NOMBRE_SERVICIO}")
-        driver.get(URL)
-        time.sleep(8)
-        
-        # ========== 1. SELECCIONAR SERVICIO CORRECTAMENTE ==========
-        try:
+        with sync_playwright() as p:
+            logging.info(f"🔍 Iniciando búsqueda para: {NOMBRE_SERVICIO}")
+            browser = p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox'])
+            page = browser.new_page()
+            page.goto(URL, wait_until="networkidle", timeout=60000)
+            time.sleep(8)
+            
+            # ========== 1. SELECCIONAR SERVICIO ==========
             try:
-                boton_mostrar = driver.find_element(By.XPATH, "//button[contains(text(), 'Mostrar más servicios')]")
-                driver.execute_script("arguments[0].click();", boton_mostrar)
-                logging.info("✅ Click en 'Mostrar más servicios'")
-                time.sleep(3)
-            except:
-                logging.info("No se encontró botón 'Mostrar más servicios'")
-            
-            servicios = driver.find_elements(By.CSS_SELECTOR, "div.XNuah")
-            servicio_encontrado = False
-            
-            for servicio in servicios:
-                texto_servicio = servicio.text.strip()
-                logging.info(f"Servicio encontrado: '{texto_servicio}'")
+                try:
+                    boton_mostrar = page.locator("//button[contains(text(), 'Mostrar más servicios')]")
+                    if boton_mostrar.count() > 0:
+                        boton_mostrar.click()
+                        logging.info("✅ Click en 'Mostrar más servicios'")
+                        time.sleep(3)
+                except Exception:
+                    logging.info("No se encontró botón 'Mostrar más servicios'")
                 
-                if texto_servicio == NOMBRE_SERVICIO:
-                    logging.info(f"✅ Servicio exacto encontrado: '{texto_servicio}'")
-                    radio = servicio.find_element(By.XPATH, "./ancestor::li//input[@type='radio']")
-                    driver.execute_script("arguments[0].click();", radio)
-                    servicio_encontrado = True
-                    logging.info(f"✅ Servicio seleccionado: {NOMBRE_SERVICIO}")
-                    break
-            
-            if not servicio_encontrado:
+                servicios = page.locator("div.XNuah").all()
+                servicio_encontrado = False
+                
                 for servicio in servicios:
-                    if NOMBRE_SERVICIO.lower() in servicio.text.lower():
-                        logging.info(f"✅ Servicio parcial encontrado: '{servicio.text}'")
-                        radio = servicio.find_element(By.XPATH, "./ancestor::li//input[@type='radio']")
-                        driver.execute_script("arguments[0].click();", radio)
+                    texto_servicio = servicio.inner_text().strip()
+                    logging.info(f"Servicio encontrado: '{texto_servicio}'")
+                    
+                    if texto_servicio == NOMBRE_SERVICIO:
+                        logging.info(f"✅ Servicio exacto encontrado: '{texto_servicio}'")
+                        radio = servicio.locator("xpath=./ancestor::li//input[@type='radio']")
+                        radio.click(force=True)
                         servicio_encontrado = True
-                        logging.info(f"✅ Servicio seleccionado (parcial): {servicio.text}")
+                        logging.info(f"✅ Servicio seleccionado: {NOMBRE_SERVICIO}")
                         break
-            
-            if not servicio_encontrado:
-                logging.error(f"❌ No se encontró el servicio: {NOMBRE_SERVICIO}")
-                ultimo_estado = f"Servicio '{NOMBRE_SERVICIO}' no encontrado"
-                return
                 
-        except Exception as e:
-            logging.error(f"Error seleccionando servicio: {e}")
-            ultimo_estado = f"Error seleccionando servicio: {str(e)[:50]}"
-            return
-        
-        time.sleep(5)
-        
-        # ========== 2. BUSCAR DÍAS DISPONIBLES ==========
-        dias = driver.find_elements(By.CSS_SELECTOR, "div.omApa[data-value]")
-        logging.info(f"Total días encontrados en calendario: {len(dias)}")
-        
-        dias_disponibles = []
-        
-        for dia in dias:
-            try:
-                numero = dia.text.strip()
-                if numero and numero.isdigit():
-                    aria_disabled = dia.get_attribute("aria-disabled")
-                    if aria_disabled != "true":
-                        dias_disponibles.append(numero)
-                        logging.info(f"📆 Día disponible encontrado: {numero}")
+                if not servicio_encontrado:
+                    for servicio in servicios:
+                        texto_servicio = servicio.inner_text().strip()
+                        if NOMBRE_SERVICIO.lower() in texto_servicio.lower():
+                            logging.info(f"✅ Servicio parcial encontrado: '{texto_servicio}'")
+                            radio = servicio.locator("xpath=./ancestor::li//input[@type='radio']")
+                            radio.click(force=True)
+                            servicio_encontrado = True
+                            logging.info(f"✅ Servicio seleccionado (parcial): {texto_servicio}")
+                            break
+                
+                if not servicio_encontrado:
+                    logging.error(f"❌ No se encontró el servicio: {NOMBRE_SERVICIO}")
+                    ultimo_estado = f"Servicio '{NOMBRE_SERVICIO}' no encontrado"
+                    browser.close()
+                    return
+                    
             except Exception as e:
-                continue
-        
-        if dias_disponibles:
-            dias_ordenados = sorted(list(set(dias_disponibles)), key=int)
-            citas_encontradas_total += 1
-            ultimo_estado = f"✅ {len(dias_ordenados)} días con citas"
+                logging.error(f"Error seleccionando servicio: {e}")
+                ultimo_estado = f"Error seleccionando servicio: {str(e)[:50]}"
+                browser.close()
+                return
             
-            mensaje = f"<b>🔔 ¡CITAS DISPONIBLES!</b>\n\n"
-            mensaje += f"<b>Servicio:</b> {NOMBRE_SERVICIO}\n"
-            mensaje += f"<b>📅 Fecha:</b> {ultima_verificacion}\n"
-            mensaje += f"<b>✅ Días con citas:</b> {len(dias_ordenados)}\n"
-            for d in dias_ordenados:
-                mensaje += f"    📆 Día {d}\n"
-            mensaje += f"\n🔗 <a href='{URL}'>Reservar ahora</a>"
+            time.sleep(5)
             
-            enviar_telegram(mensaje)
-            logging.info(f"🎉 CITAS ENCONTRADAS: {dias_ordenados}")
-        else:
-            ultimo_estado = "❌ Sin citas disponibles"
-            logging.info("❌ No hay citas disponibles en este momento")
+            # ========== 2. BUSCAR DÍAS DISPONIBLES ==========
+            dias = page.locator("div.omApa[data-value]").all()
+            logging.info(f"Total días encontrados en calendario: {len(dias)}")
+            
+            dias_disponibles = []
+            
+            for dia in dias:
+                try:
+                    numero = dia.inner_text().strip()
+                    if numero and numero.isdigit():
+                        aria_disabled = dia.get_attribute("aria-disabled")
+                        if aria_disabled != "true":
+                            dias_disponibles.append(numero)
+                            logging.info(f"📆 Día disponible encontrado: {numero}")
+                except Exception:
+                    continue
+            
+            if dias_disponibles:
+                dias_ordenados = sorted(list(set(dias_disponibles)), key=int)
+                citas_encontradas_total += 1
+                ultimo_estado = f"✅ {len(dias_ordenados)} días con citas"
+                
+                mensaje = f"<b>🔔 ¡CITAS DISPONIBLES!</b>\n\n"
+                mensaje += f"<b>Servicio:</b> {NOMBRE_SERVICIO}\n"
+                mensaje += f"<b>📅 Fecha:</b> {ultima_verificacion}\n"
+                mensaje += f"<b>✅ Días con citas:</b> {len(dias_ordenados)}\n"
+                for d in dias_ordenados:
+                    mensaje += f"    📆 Día {d}\n"
+                mensaje += f"\n🔗 <a href='{URL}'>Reservar ahora</a>"
+                
+                enviar_telegram(mensaje)
+                logging.info(f"🎉 CITAS ENCONTRADAS: {dias_ordenados}")
+            else:
+                ultimo_estado = "❌ Sin citas disponibles"
+                logging.info("❌ No hay citas disponibles en este momento")
+                
+            browser.close()
             
     except Exception as e:
         ultimo_estado = f"⚠ Error: {str(e)[:100]}"
         logging.error(f"Error en búsqueda: {e}")
-    finally:
-        if driver:
-            driver.quit()
 
 # ===========================================
 # TELEGRAM BOT
